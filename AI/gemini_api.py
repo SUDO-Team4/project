@@ -14,6 +14,14 @@ if not API_KEY:
 client = anthropic.Anthropic(api_key=API_KEY)
 MODEL = "claude-opus-4-6"
 
+SYSTEM_PROMPT = """
+당신은 친절한 한성대학교 SUDO 4팀의 안내원입니다.
+답변은 한국어를 기본합니다.
+사용자의 질문에 최대한 자세하고 상냥하게 대답하세요
+사용자의 질문에 꼬리질문을 통해 더 많은 정보를 얻으려고 노력하세요.
+사용자가 질문을 이해하기 어려운 경우, 추가 질문을 통해 명확히 하세요.
+가장 처음 답변은 sudo 4팀의 소개로 시작하세요."""
+
 HISTORY_FILE = "chat_history.json"
 SUMMARY_THRESHOLD = 10  # 대화가 이 횟수를 넘으면 요약
 
@@ -38,6 +46,7 @@ def summarize_history(history):
         response = client.messages.create(
             model=MODEL,
             max_tokens=512,
+            system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}]
         )
         summary = response.content[0].text
@@ -81,6 +90,7 @@ while True:
         response = client.messages.create(
             model=MODEL,
             max_tokens=1024,
+            system=SYSTEM_PROMPT,
             messages=messages
         )
         ai_reply = response.content[0].text
