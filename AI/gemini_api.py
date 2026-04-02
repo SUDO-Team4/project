@@ -1,18 +1,18 @@
 import os
 import json
 from datetime import datetime
-import google.generativeai as genai
+import anthropic
 from dotenv import load_dotenv
 
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 if not API_KEY:
-    print("오류: GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+    print("오류: ANTHROPIC_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
     exit(1)
 
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash")
+client = anthropic.Anthropic(api_key=API_KEY)
+MODEL = "claude-opus-4-6"
 
 HISTORY_FILE = "chat_history.json"
 SUMMARY_THRESHOLD = 10  # 대화가 이 횟수를 넘으면 요약
@@ -35,24 +35,27 @@ def summarize_history(history):
     )
     prompt = f"다음 대화를 3줄 이내로 요약해줘:\n\n{conversation_text}"
     try:
-        response = model.generate_content(prompt)
-        summary = response.text
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        summary = response.content[0].text
         print(f"\n[대화 요약 완료]\n{summary}\n")
         return [{"role": "user", "content": f"[이전 대화 요약]\n{summary}", "timestamp": datetime.now().isoformat()}]
     except Exception as e:
         print(f"요약 중 오류 발생: {e}")
         return history
 
+def build_messages(saved_history):
+    return [
+        {"role": h["role"], "content": h["content"]}
+        for h in saved_history
+        if h.get("role") in ("user", "assistant")
+    ]
+
 # 히스토리 불러오기
 saved_history = load_history()
-
-# Gemini chat history 형식으로 변환
-gemini_history = [
-    {"role": h["role"], "parts": [h["content"]]}
-    for h in saved_history
-    if h.get("role") in ("user", "model")
-]
-chat = model.start_chat(history=gemini_history)
 
 print("챗봇 시작! 종료하려면 'exit' 입력")
 turn_count = len([h for h in saved_history if h.get("role") == "user"])
@@ -72,29 +75,32 @@ while True:
         continue
 
     try:
-        response = chat.send_message(user_input)
-        ai_reply = response.text
+        messages = build_messages(saved_history)
+        messages.append({"role": "user", "content": user_input})
+
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=1024,
+            messages=messages
+        )
+        ai_reply = response.content[0].text
         print(f"AI: {ai_reply}")
 
         timestamp = datetime.now().isoformat()
         saved_history.append({"role": "user", "content": user_input, "timestamp": timestamp})
-        saved_history.append({"role": "model", "content": ai_reply, "timestamp": timestamp})
+        saved_history.append({"role": "assistant", "content": ai_reply, "timestamp": timestamp})
         turn_count += 1
 
         # 일정 횟수 초과 시 요약
         if turn_count >= SUMMARY_THRESHOLD:
             saved_history = summarize_history(saved_history)
-            gemini_history = [
-                {"role": h["role"], "parts": [h["content"]]}
-                for h in saved_history
-                if h.get("role") in ("user", "model")
-            ]
-            chat = model.start_chat(history=gemini_history)
             turn_count = 0
 
         save_history(saved_history)
 
-    except genai.types.generation_types.StopCandidateException:
-        print("AI: 응답이 차단되었습니다. 다른 질문을 해보세요.")
+    except anthropic.AuthenticationError:
+        print("오류: API 키가 유효하지 않습니다. .env 파일을 확인하세요.")
+    except anthropic.RateLimitError:
+        print("오류: API 사용량 한도 초과. 잠시 후 다시 시도하세요.")
     except Exception as e:
         print(f"오류 발생: {e}")
