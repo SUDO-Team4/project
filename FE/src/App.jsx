@@ -32,7 +32,7 @@ function App() {
     setInput('')
 
     try {
-      const res = await fetch('https://sudo-backend-kkpm.onrender.com/chat', {
+     const res = await fetch('https://sudo-backend-kkpm.onrender.com/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input })
